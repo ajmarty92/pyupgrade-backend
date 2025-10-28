@@ -7,6 +7,8 @@ from cryptography.fernet import Fernet
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from dotenv import load_dotenv
+from sqlalchemy.orm import Session
+import database, models # Import database and models
 
 load_dotenv()
 
@@ -23,10 +25,22 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def verify_password(plain_password, hashed_password):
+    if hashed_password is None: # Handle case where user signed up via OAuth initially
+        return False
     return pwd_context.verify(plain_password, hashed_password)
 
 def get_password_hash(password):
     return pwd_context.hash(password)
+
+# --- NEW: Authenticate User Function ---
+def authenticate_user(db: Session, email: str, password: str) -> Optional[models.User]:
+    """Finds user by email and verifies password."""
+    user = db.query(models.User).filter(models.User.email == email).first()
+    if not user:
+        return None
+    if not verify_password(password, user.hashed_password):
+        return None
+    return user
 
 # --- JWT Token ---
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
