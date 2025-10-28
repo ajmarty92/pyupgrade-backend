@@ -1,0 +1,29 @@
+Dependabot configuration for Python project
+version: 2
+updates:
+
+Enable version updates for pip
+package-ecosystem: "pip"
+
+Look for requirements.txt in the root directory
+directory: "/"
+
+Check for updates daily
+schedule:
+interval: "daily"
+
+Add labels to Dependabot PRs
+labels:
+
+"dependencies"
+
+"python"
+
+Group patch and minor updates to reduce noise
+groups:
+python-patch-updates:
+update-types:
+- "patch"
+python-minor-updates:
+update-types:
+- "minor"
