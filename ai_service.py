@@ -1,4 +1,5 @@
 import os
+import json
 import google.generativeai as genai
 from dotenv import load_dotenv
 
@@ -12,16 +13,69 @@ code_generation_model = genai.GenerativeModel('gemini-1.5-flash')
 report_generation_model = genai.GenerativeModel('gemini-1.5-flash', generation_config={"response_mime_type": "application/json"})
 
 async def generate_code_fix(code_snippet: str, issue_type: str, file_path: str, line: int) -> str:
-    # ... (implementation is unchanged)
-    pass
+    """Generates a fix for a specific code issue using Gemini."""
+    prompt = f"""
+    You are an expert Python developer. A code issue has been identified in the following file.
+    File: {file_path}
+    Line: {line}
+    Issue: {issue_type}
+
+    The problematic code snippet is:
+    ```python
+    {code_snippet}
+    ```
+
+    Your task is to provide a corrected version of this code snippet that fixes the issue while preserving the original logic.
+    Output ONLY the corrected Python code, without any markdown formatting or explanations.
+    """
+    response = await code_generation_model.generate_content_async(prompt)
+    return response.text.strip()
 
 async def generate_report_summary_and_steps(report_data: dict) -> dict:
-    # ... (implementation is unchanged)
-    pass
+    """Generates a summary and modernization steps based on the scan report."""
+    prompt = f"""
+    You are a senior software architect. Analyze the following Python project scan report:
+    {report_data}
+
+    Your task is to:
+    1. Provide a concise executive summary of the project's technical debt and security posture.
+    2. Estimate the effort required to modernize the project (Low, Medium, High).
+    3. List step-by-step actions to address the identified issues (dependencies and syntax).
+
+    Output the result as a JSON object with the following keys:
+    - "summary": string
+    - "effort": string
+    - "steps": list of strings
+    """
+    response = await report_generation_model.generate_content_async(prompt)
+    try:
+        return json.loads(response.text)
+    except json.JSONDecodeError:
+        # Fallback if JSON parsing fails
+        return {
+            "summary": "Analysis completed, but structured output failed.",
+            "effort": "Unknown",
+            "steps": ["Review report manually."]
+        }
 
 async def modernize_code_snippet(code_snippet: str) -> str:
-    # ... (implementation is unchanged)
-    pass
+    """Modernizes a Python code snippet to Python 3.11+ standards."""
+    prompt = f"""
+    You are an expert Python developer. Your task is to modernize the following Python code snippet to follow Python 3.11+ best practices and syntax.
+
+    Original Code:
+    ```python
+    {code_snippet}
+    ```
+
+    Instructions:
+    - Update deprecated syntax (e.g., print statements, old-style classes).
+    - Use modern features like f-strings, type hinting, and new standard library modules where appropriate.
+    - Preserve the original logic.
+    - Output ONLY the modernized Python code, without any markdown formatting or explanations.
+    """
+    response = await code_generation_model.generate_content_async(prompt)
+    return response.text.strip()
 
 # --- NEW AI FUNCTIONS ---
 

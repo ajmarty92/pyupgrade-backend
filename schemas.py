@@ -1,7 +1,23 @@
 from pydantic import BaseModel, EmailStr
 from typing import Optional
 
-# ... (User and Token schemas are unchanged)
+class UserBase(BaseModel):
+    email: EmailStr
+
+class UserCreate(UserBase):
+    password: str
+
+class User(UserBase):
+    id: int
+    provider: str
+    github_access_token: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
 
 class RepoScanRequest(BaseModel):
     repo_name: str
