@@ -303,13 +303,21 @@ def analyze_repository(repo_name, github_token):
         if os.path.exists(temp_dir): 
             shutil.rmtree(temp_dir)
 
-# --- Save Report Function (Unchanged) ---
-def save_scan_report(db: Session, user_id: int, repo_name: str, report_data: dict):
+# --- Save Report Function ---
+def save_scan_report(db: Session, user_id: int, repo_name: str, report_data: dict, task_id: str = None):
     """Saves a completed scan report to the database."""
+    if task_id:
+        existing_report = db.query(models.ScanReport).filter(models.ScanReport.task_id == task_id).first()
+        if existing_report:
+            existing_report.report_data = report_data
+            db.commit()
+            return
+
     new_report = models.ScanReport(
         user_id=user_id,
         repo_name=repo_name,
-        report_data=report_data
+        report_data=report_data,
+        task_id=task_id
     )
     db.add(new_report)
     db.commit()

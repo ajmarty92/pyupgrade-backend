@@ -19,6 +19,7 @@ class ScanReport(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     repo_name = Column(String, index=True)
+    task_id = Column(String, index=True, unique=True, nullable=True)
     report_data = Column(JSON) # Store the full JSON report
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

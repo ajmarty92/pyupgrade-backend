@@ -55,7 +55,7 @@ async def get_repositories(current_user: models.User = Depends(auth.get_current_
     return await auth.get_user_repositories(current_user) # Delegate to auth module
 
 @app.post("/api/scan", status_code=202)
-async def start_scan(repo_data: schemas.RepoScanRequest, current_user: models.User = Depends(auth.get_current_active_user)):
+async def start_scan(repo_data: schemas.RepoScanRequest, current_user: models.User = Depends(auth.get_current_active_user), db: Session = Depends(database.get_db)):
     if not current_user.github_access_token:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="GitHub account not linked.")
     try:
@@ -63,6 +63,17 @@ async def start_scan(repo_data: schemas.RepoScanRequest, current_user: models.Us
         await auth.verify_repo_permission(repo_data.repo_name, decrypted_token) # Delegate verification
         # Pass necessary primitive types to Celery task
         task = run_repository_scan.delay(repo_data.repo_name, decrypted_token, current_user.id) 
+
+        # Create initial scan report linked to the task
+        new_report = models.ScanReport(
+            user_id=current_user.id,
+            repo_name=repo_data.repo_name,
+            task_id=task.id,
+            report_data={"status": "pending"}
+        )
+        db.add(new_report)
+        db.commit()
+
         return {"task_id": task.id}
     except HTTPException as e:
         raise e
@@ -72,7 +83,14 @@ async def start_scan(repo_data: schemas.RepoScanRequest, current_user: models.Us
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"An unexpected error occurred: {str(e)}")
 
 @app.get("/api/scan/status/{task_id}")
-async def get_scan_status(task_id: str):
+async def get_scan_status(task_id: str, current_user: models.User = Depends(auth.get_current_active_user), db: Session = Depends(database.get_db)):
+    # Verify ownership of the task
+    report = db.query(models.ScanReport).filter(models.ScanReport.task_id == task_id).first()
+    if not report:
+         raise HTTPException(status_code=404, detail="Scan not found")
+    if report.user_id != current_user.id:
+         raise HTTPException(status_code=403, detail="Not authorized to view this scan")
+
     task_result = AsyncResult(task_id, app=celery_app)
     if task_result.failed():
         # Log the actual error from the worker
