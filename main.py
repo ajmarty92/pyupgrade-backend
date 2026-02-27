@@ -4,7 +4,6 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from celery.result import AsyncResult
-import json
 
 # Import project modules (avoid importing specific items initially if possible)
 import database 
