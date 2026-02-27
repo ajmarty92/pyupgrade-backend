@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from celery.result import AsyncResult
 import json
+import logging
 
 # Import project modules (avoid importing specific items initially if possible)
 import database 
@@ -13,6 +14,10 @@ import schemas # Import the whole module first
 import security 
 import auth # Import the router itself
 from celery_worker import celery_app, run_repository_scan
+
+# --- Logging Configuration ---
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # --- App Initialization ---
 models.Base.metadata.create_all(bind=database.engine)
@@ -63,9 +68,7 @@ async def start_scan(repo_data: schemas.RepoScanRequest, current_user: models.Us
         raise e
     except Exception as e:
         # Log the full error for debugging
-        print(f"ERROR STARTING SCAN: {e}") 
-        import traceback
-        traceback.print_exc()
+        logger.exception(f"ERROR STARTING SCAN: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"An unexpected error occurred: {str(e)}")
 
 @app.get("/api/scan/status/{task_id}")
@@ -73,7 +76,7 @@ async def get_scan_status(task_id: str):
     task_result = AsyncResult(task_id, app=celery_app)
     if task_result.failed():
         # Log the actual error from the worker
-        print(f"ERROR IN SCAN TASK {task_id}: {task_result.result}") 
+        logger.error(f"ERROR IN SCAN TASK {task_id}: {task_result.result}")
         return {"status": "FAILURE", "detail": "Scan failed. Check server logs."} # Avoid sending detailed errors to client
     if task_result.ready():
         return {"status": "SUCCESS", "result": task_result.get()}
@@ -98,4 +101,3 @@ async def generate_tests(test_request: schemas.GenerateTestsRequest, current_use
 @app.get("/api/strategic-summary", response_model=schemas.StrategicSummaryResponse)
 async def get_strategic_summary(current_user: models.User = Depends(auth.get_current_active_user), db: Session = Depends(database.get_db)):
      return await auth.handle_strategic_summary(current_user, db) # Delegate
-
