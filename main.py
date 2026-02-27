@@ -5,6 +5,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from celery.result import AsyncResult
 import json
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Import project modules (avoid importing specific items initially if possible)
 import database 
@@ -63,9 +68,7 @@ async def start_scan(repo_data: schemas.RepoScanRequest, current_user: models.Us
         raise e
     except Exception as e:
         # Log the full error for debugging
-        print(f"ERROR STARTING SCAN: {e}") 
-        import traceback
-        traceback.print_exc()
+        logger.error("Error starting scan: %s", e, exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"An unexpected error occurred: {str(e)}")
 
 @app.get("/api/scan/status/{task_id}")
