@@ -83,3 +83,30 @@ def test_deprecated_syntax_visitor_raise():
     assert issue['type'] == 'Old-style raise statement (Python 2)'
     assert issue['file'] == 'test.py'
     assert issue['line'] == 2
+
+def test_deprecated_syntax_visitor_raise_exc_no_cause():
+    """Test handling of Raise node with exc but no cause (simulating legacy/partial AST)."""
+    visitor = DeprecatedSyntaxVisitor("test.py", "raise Exception")
+
+    # Create a Mock node that HAS 'exc' but DOES NOT HAVE 'cause'
+    mock_node = MagicMock()
+    mock_node.lineno = 1
+    mock_node.end_lineno = 1
+    mock_node.col_offset = 0
+    mock_node.end_col_offset = 15
+
+    # Ensure standard Py2 attributes are NOT present to fall through to the elif
+    del mock_node.type
+    del mock_node.inst
+
+    # Set 'exc' to a Truthy value
+    mock_node.exc = "Exception"
+
+    # IMPORTANT: Delete 'cause' attribute to satisfy `not hasattr(node, 'cause')`
+    del mock_node.cause
+
+    visitor.visit_Raise(mock_node)
+
+    assert len(visitor.issues) == 1
+    issue = visitor.issues[0]
+    assert issue['type'] == 'Old-style raise statement (Python 2)'
