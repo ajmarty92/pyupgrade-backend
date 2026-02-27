@@ -188,7 +188,14 @@ class DeprecatedSyntaxVisitor(ast.NodeVisitor):
         elif hasattr(node, 'exc') and node.exc and not hasattr(node, 'cause'): 
              # Check if there are multiple arguments being passed in a non-standard way
              # This is still heuristic and might need refinement
-             pass # Let's avoid potentially noisy/incorrect detections for now
+             snippet = self._get_code_snippet(node)
+             self.issues.append({
+                 "type": "Old-style raise statement (Python 2)",
+                 "file": self.file_path,
+                 "line": node.lineno,
+                 "description": "Uses deprecated Python 2 'raise E, V' syntax.",
+                 "code_snippet": snippet
+             })
 
         self.generic_visit(node)
 
