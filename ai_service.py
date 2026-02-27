@@ -1,5 +1,7 @@
 import os
 import json
+import re
+import textwrap
 import google.generativeai as genai
 from dotenv import load_dotenv
 
@@ -11,6 +13,21 @@ genai.configure(api_key=GEMINI_API_KEY)
 
 code_generation_model = genai.GenerativeModel('gemini-1.5-flash')
 report_generation_model = genai.GenerativeModel('gemini-1.5-flash', generation_config={"response_mime_type": "application/json"})
+
+REPORT_SUMMARY_PROMPT = textwrap.dedent("""
+    You are a senior software architect. Analyze the following Python project scan report:
+    {report_data}
+
+    Your task is to:
+    1. Provide a concise executive summary of the project's technical debt and security posture.
+    2. Estimate the effort required to modernize the project (Low, Medium, High).
+    3. List step-by-step actions to address the identified issues (dependencies and syntax).
+
+    Output the result as a JSON object with the following keys:
+    - "summary": string
+    - "effort": string
+    - "steps": list of strings
+    """)
 
 async def generate_code_fix(code_snippet: str, issue_type: str, file_path: str, line: int) -> str:
     """Generates a fix for a specific code issue using Gemini."""
@@ -33,25 +50,23 @@ async def generate_code_fix(code_snippet: str, issue_type: str, file_path: str, 
 
 async def generate_report_summary_and_steps(report_data: dict) -> dict:
     """Generates a summary and modernization steps based on the scan report."""
-    prompt = f"""
-    You are a senior software architect. Analyze the following Python project scan report:
-    {report_data}
+    prompt = REPORT_SUMMARY_PROMPT.format(report_data=report_data)
 
-    Your task is to:
-    1. Provide a concise executive summary of the project's technical debt and security posture.
-    2. Estimate the effort required to modernize the project (Low, Medium, High).
-    3. List step-by-step actions to address the identified issues (dependencies and syntax).
-
-    Output the result as a JSON object with the following keys:
-    - "summary": string
-    - "effort": string
-    - "steps": list of strings
-    """
-    response = await report_generation_model.generate_content_async(prompt)
     try:
-        return json.loads(response.text)
-    except json.JSONDecodeError:
-        # Fallback if JSON parsing fails
+        response = await report_generation_model.generate_content_async(prompt)
+        response_text = response.text.strip()
+
+        # Strip Markdown code blocks if present
+        if response_text.startswith("```json"):
+            response_text = re.sub(r"^```json\s*", "", response_text)
+            response_text = re.sub(r"\s*```$", "", response_text)
+        elif response_text.startswith("```"):
+            response_text = re.sub(r"^```\s*", "", response_text)
+            response_text = re.sub(r"\s*```$", "", response_text)
+
+        return json.loads(response_text)
+    except Exception:
+        # Fallback if API fails or JSON parsing fails
         return {
             "summary": "Analysis completed, but structured output failed.",
             "effort": "Unknown",
@@ -137,4 +152,3 @@ async def generate_strategic_summary(scan_reports: list[dict]) -> str:
     """
     response = await code_generation_model.generate_content_async(prompt)
     return response.text.strip()
-

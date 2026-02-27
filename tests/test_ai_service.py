@@ -24,6 +24,28 @@ async def test_generate_report_summary_and_steps():
         mock_generate.assert_called_once()
 
 @pytest.mark.asyncio
+async def test_generate_report_summary_and_steps_with_markdown():
+    with patch('ai_service.report_generation_model.generate_content_async', new_callable=AsyncMock) as mock_generate:
+        mock_generate.return_value.text = '```json\n{"summary": "test", "effort": "Low", "steps": []}\n```'
+
+        result = await ai_service.generate_report_summary_and_steps({})
+
+        assert result["summary"] == "test"
+        assert result["effort"] == "Low"
+        mock_generate.assert_called_once()
+
+@pytest.mark.asyncio
+async def test_generate_report_summary_and_steps_api_error():
+    with patch('ai_service.report_generation_model.generate_content_async', new_callable=AsyncMock) as mock_generate:
+        mock_generate.side_effect = Exception("API Error")
+
+        result = await ai_service.generate_report_summary_and_steps({})
+
+        assert result["summary"] == "Analysis completed, but structured output failed."
+        assert result["effort"] == "Unknown"
+        mock_generate.assert_called_once()
+
+@pytest.mark.asyncio
 async def test_modernize_code_snippet():
     with patch('ai_service.code_generation_model.generate_content_async', new_callable=AsyncMock) as mock_generate:
         mock_generate.return_value.text = "modernized_code"
