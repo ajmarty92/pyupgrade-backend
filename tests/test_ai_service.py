@@ -13,6 +13,18 @@ async def test_generate_code_fix():
         mock_generate.assert_called_once()
 
 @pytest.mark.asyncio
+async def test_generate_code_fix_error_handling():
+    with patch('ai_service.code_generation_model.generate_content_async', new_callable=AsyncMock) as mock_generate:
+        # Simulate an exception
+        mock_generate.side_effect = Exception("API Error")
+
+        # The function should catch the exception and return the original code snippet
+        result = await ai_service.generate_code_fix("old_code", "issue", "file.py", 10)
+
+        assert result == "old_code"
+        mock_generate.assert_called_once()
+
+@pytest.mark.asyncio
 async def test_generate_report_summary_and_steps():
     with patch('ai_service.report_generation_model.generate_content_async', new_callable=AsyncMock) as mock_generate:
         mock_generate.return_value.text = '{"summary": "test", "effort": "Low", "steps": []}'

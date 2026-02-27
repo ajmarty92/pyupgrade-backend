@@ -1,5 +1,6 @@
 import os
 import json
+import logging
 import google.generativeai as genai
 from dotenv import load_dotenv
 
@@ -28,8 +29,14 @@ async def generate_code_fix(code_snippet: str, issue_type: str, file_path: str, 
     Your task is to provide a corrected version of this code snippet that fixes the issue while preserving the original logic.
     Output ONLY the corrected Python code, without any markdown formatting or explanations.
     """
-    response = await code_generation_model.generate_content_async(prompt)
-    return response.text.strip()
+    try:
+        response = await code_generation_model.generate_content_async(prompt)
+        return response.text.strip()
+    except Exception as e:
+        # Log the error and return a fallback message or raise a custom exception
+        # For now, we return the original code snippet as a safe fallback
+        logging.error(f"Error generating code fix: {e}")
+        return code_snippet
 
 async def generate_report_summary_and_steps(report_data: dict) -> dict:
     """Generates a summary and modernization steps based on the scan report."""
