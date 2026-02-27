@@ -3,6 +3,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 import httpx
 import os
+import asyncio
 import traceback # For logging detailed errors
 
 # Import modules instead of specific items where feasible
@@ -51,13 +52,9 @@ async def get_current_active_user(token: str = Depends(security.oauth2_scheme), 
     return user
 
 # --- Helper Functions ---
-async def get_user_repositories(current_user: models.User):
-    """Fetches list of repositories for the authenticated user from GitHub."""
-    if not current_user.github_access_token:
-        raise HTTPException(status_code=403, detail="GitHub account not linked.")
-
+def _get_user_repositories_sync(token: str):
+    """Synchronous helper to fetch repositories from GitHub."""
     try:
-        token = security.decrypt_data(current_user.github_access_token)
         g = Github(token)
         user = g.get_user()
         repos = []
@@ -78,17 +75,32 @@ async def get_user_repositories(current_user: models.User):
         print(f"Error fetching repositories: {e}")
         raise HTTPException(status_code=500, detail="Internal server error while fetching repositories.")
 
-async def verify_repo_permission(repo_name: str, token: str):
-    """Verifies if the user has push access to the repository."""
+async def get_user_repositories(current_user: models.User):
+    """Fetches list of repositories for the authenticated user from GitHub."""
+    if not current_user.github_access_token:
+        raise HTTPException(status_code=403, detail="GitHub account not linked.")
+
+    token = security.decrypt_data(current_user.github_access_token)
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, _get_user_repositories_sync, token)
+
+def _verify_repo_permission_sync(repo_name: str, token: str):
+    """Synchronous helper to verify repository permissions."""
     try:
         g = Github(token)
         repo = g.get_repo(repo_name)
         if not repo.permissions.push:
              raise HTTPException(status_code=403, detail="You do not have write access to this repository.")
+        return True
     except GithubException as e:
         if e.status == 404:
              raise HTTPException(status_code=404, detail="Repository not found.")
         raise HTTPException(status_code=400, detail="Failed to verify repository permissions.")
+
+async def verify_repo_permission(repo_name: str, token: str):
+    """Verifies if the user has push access to the repository."""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, _verify_repo_permission_sync, repo_name, token)
 
 async def generate_ai_fix(fix_request: schemas.GenerateFixRequest):
     """Generates a fix for a code issue."""

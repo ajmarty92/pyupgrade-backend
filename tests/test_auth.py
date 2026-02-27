@@ -36,8 +36,9 @@ async def test_verify_repo_permission_success():
         mock_repo = mock_gh_instance.get_repo.return_value
         mock_repo.permissions.push = True
 
-        # Should not raise exception
-        await auth.verify_repo_permission("repo", "token")
+        # Should not raise exception and return True
+        result = await auth.verify_repo_permission("repo", "token")
+        assert result is True
 
 @pytest.mark.asyncio
 async def test_verify_repo_permission_failure():
