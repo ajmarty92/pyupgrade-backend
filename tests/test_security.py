@@ -1,5 +1,6 @@
 import pytest
 from cryptography.fernet import Fernet
+from datetime import datetime, timedelta, timezone
 import security
 
 def test_encrypt_decrypt_lifecycle():
@@ -33,3 +34,53 @@ def test_decrypt_failure():
 
     with pytest.raises((InvalidToken, binascii.Error)):
         security.decrypt_data(invalid_data)
+
+def test_create_access_token_default_expiry():
+    """Test creating an access token with default expiration."""
+    data = {"sub": "testuser"}
+    token = security.create_access_token(data)
+    assert isinstance(token, str)
+
+    payload = security.decode_access_token(token)
+    assert payload is not None
+    assert payload["sub"] == "testuser"
+    assert "exp" in payload
+
+    # Expected expiration is roughly now + 7 days (ACCESS_TOKEN_EXPIRE_MINUTES)
+    # ACCESS_TOKEN_EXPIRE_MINUTES is 60 * 24 * 7
+    expected_delta = timedelta(minutes=security.ACCESS_TOKEN_EXPIRE_MINUTES)
+    expected_exp = datetime.now(timezone.utc) + expected_delta
+
+    # Verify expiration is within a reasonable range (e.g., 10 seconds)
+    # JWT exp is in seconds (int or float)
+    assert abs(payload["exp"] - expected_exp.timestamp()) < 10
+
+def test_create_access_token_custom_expiry():
+    """Test creating an access token with custom expiration."""
+    data = {"sub": "testuser_custom"}
+    expires_delta = timedelta(minutes=15)
+    token = security.create_access_token(data, expires_delta=expires_delta)
+
+    payload = security.decode_access_token(token)
+    assert payload is not None
+    assert payload["sub"] == "testuser_custom"
+
+    # Check expiration
+    expected_exp = datetime.now(timezone.utc) + expires_delta
+    assert abs(payload["exp"] - expected_exp.timestamp()) < 10
+
+def test_decode_access_token_invalid():
+    """Test decoding an invalid token returns None."""
+    invalid_token = "invalid.token.string"
+    payload = security.decode_access_token(invalid_token)
+    assert payload is None
+
+def test_decode_access_token_expired():
+    """Test decoding an expired token returns None."""
+    data = {"sub": "expired_user"}
+    # Create a token that expired 1 minute ago
+    expires_delta = timedelta(minutes=-1)
+    token = security.create_access_token(data, expires_delta=expires_delta)
+
+    payload = security.decode_access_token(token)
+    assert payload is None
