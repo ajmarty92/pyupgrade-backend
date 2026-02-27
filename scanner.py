@@ -10,6 +10,10 @@ import ai_service
 import asyncio
 from sqlalchemy.orm import Session
 import models
+import logging
+
+# --- Configure Logging ---
+logger = logging.getLogger(__name__)
 
 # --- FIX: Restored Helper Functions ---
 
@@ -26,7 +30,7 @@ def detect_python_version(repo_path: str) -> str:
                     return version_str.split('-')[1]
                 return version_str # Assumes just the version number
         except Exception as e:
-            print(f"Error reading runtime.txt: {e}")
+            logger.warning(f"Error reading runtime.txt: {e}")
             
     # Check .python-version (pyenv)
     pyenv_path = os.path.join(repo_path, '.python-version')
@@ -35,7 +39,7 @@ def detect_python_version(repo_path: str) -> str:
             with open(pyenv_path, 'r') as f: 
                 return f.read().strip()
         except Exception as e:
-            print(f"Error reading .python-version: {e}")
+            logger.warning(f"Error reading .python-version: {e}")
 
     # Check pyproject.toml (PEP 621, Poetry, etc.)
     pyproject_path = os.path.join(repo_path, 'pyproject.toml')
@@ -50,9 +54,9 @@ def detect_python_version(repo_path: str) -> str:
             if 'tool' in config and 'poetry' in config['tool'] and 'dependencies' in config['tool']['poetry'] and 'python' in config['tool']['poetry']['dependencies']: 
                 return config['tool']['poetry']['dependencies']['python']
         except tomli.TOMLDecodeError as e:
-            print(f"Error decoding pyproject.toml: {e}")
+            logger.warning(f"Error decoding pyproject.toml: {e}")
         except Exception as e:
-             print(f"Error reading pyproject.toml: {e}")
+             logger.warning(f"Error reading pyproject.toml: {e}")
 
     # Could add checks for Pipfile, setup.py, etc. here later
     
@@ -62,7 +66,7 @@ def parse_pinned_requirements(filepath: str) -> list[dict]:
     """Parses a requirements.txt file for pinned dependencies (package==version)."""
     dependencies = []
     if not os.path.exists(filepath): 
-        print(f"Warning: requirements.txt not found at {filepath}")
+        logger.warning(f"Warning: requirements.txt not found at {filepath}")
         return dependencies
     
     try:
@@ -81,10 +85,10 @@ def parse_pinned_requirements(filepath: str) -> list[dict]:
                         dependencies.append({'name': req.name.lower(), 'version': version})
                     # Optional: Could add logic here to warn about unpinned dependencies
                 except Exception as parse_error:
-                    print(f"Warning: Could not parse line {line_num} in {filepath}: {line} - Error: {parse_error}")
+                    logger.warning(f"Warning: Could not parse line {line_num} in {filepath}: {line} - Error: {parse_error}")
                     continue # Skip lines that can't be parsed
     except Exception as e:
-         print(f"Error reading requirements file {filepath}: {e}")
+         logger.error(f"Error reading requirements file {filepath}: {e}")
          
     return dependencies
 
@@ -105,7 +109,7 @@ def check_osv_for_vulnerabilities(dependencies: list[dict]) -> list[dict]:
             results = response.json().get("results", [])
 
         if len(results) != len(dependencies):
-             print(f"Warning: OSV API returned {len(results)} results for {len(dependencies)} queries.")
+             logger.warning(f"Warning: OSV API returned {len(results)} results for {len(dependencies)} queries.")
              # Attempt to match based on name/version if lengths differ (simple matching)
              results_map = {(r['query']['package']['name'], r['query']['version']): r for r in results if r.get('query')}
              processed_indices = set()
@@ -138,14 +142,14 @@ def check_osv_for_vulnerabilities(dependencies: list[dict]) -> list[dict]:
                     })
 
     except httpx.HTTPStatusError as e:
-        print(f"Error querying OSV API: HTTP {e.response.status_code} - {e.response.text}")
+        logger.error(f"Error querying OSV API: HTTP {e.response.status_code} - {e.response.text}")
         # Optionally add an error marker to the report
         report_entries.append({"name": "OSV Check Failed", "version": "", "status": "warning", "reason": f"Could not check dependencies due to API error: {e.response.status_code}"})
     except httpx.RequestError as e:
-        print(f"Error querying OSV API: Network error - {e}")
+        logger.error(f"Error querying OSV API: Network error - {e}")
         report_entries.append({"name": "OSV Check Failed", "version": "", "status": "warning", "reason": f"Could not check dependencies due to network error."})
     except Exception as e:
-        print(f"Unexpected error during OSV check: {e}")
+        logger.error(f"Unexpected error during OSV check: {e}")
         report_entries.append({"name": "OSV Check Failed", "version": "", "status": "warning", "reason": f"Unexpected error during check."})
         
     return report_entries
@@ -224,7 +228,7 @@ def analyze_python_file(filepath: str) -> list:
         issues = visitor.issues
         
     except SyntaxError as e:
-        print(f"Warning: Skipping file due to syntax error: {filepath} - Line {e.lineno}, Offset {e.offset}: {e.msg}")
+        logger.warning(f"Warning: Skipping file due to syntax error: {filepath} - Line {e.lineno}, Offset {e.offset}: {e.msg}")
         # Optionally report this as a different kind of issue
         issues.append({
             "type": "Syntax Error", 
@@ -234,7 +238,7 @@ def analyze_python_file(filepath: str) -> list:
             "code_snippet": f"# Error on line {e.lineno}"
         })
     except Exception as e:
-        print(f"Error analyzing file {filepath}: {e}")
+        logger.error(f"Error analyzing file {filepath}: {e}")
         # Optionally report this failure
         issues.append({
             "type": "Analysis Error", 
