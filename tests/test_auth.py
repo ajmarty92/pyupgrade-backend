@@ -4,6 +4,7 @@ from fastapi import HTTPException
 import auth
 import models
 import schemas
+import time
 
 @pytest.mark.asyncio
 async def test_get_user_repositories_success():
@@ -67,3 +68,42 @@ async def test_modernize_public_snippet():
         mock_mod.return_value = "modernized"
         result = await auth.modernize_public_snippet(snippet_request)
         assert result["modernized_code"] == "modernized"
+
+@pytest.mark.asyncio
+async def test_get_current_active_user_cache():
+    """Test that caching prevents multiple DB calls."""
+    # Clear cache
+    auth.user_cache.clear()
+
+    mock_db = MagicMock()
+    mock_query = mock_db.query.return_value
+    mock_filter = mock_query.filter.return_value
+
+    mock_user = models.User(id=999, email="cache@test.com")
+    mock_user.__dict__ = {"id": 999, "email": "cache@test.com", "provider": "email"}
+    mock_filter.first.return_value = mock_user
+
+    # Mock db.merge to return the passed-in instance to satisfy tests
+    mock_db.merge.side_effect = lambda instance, load: instance
+
+    with patch('auth.security.decode_access_token') as mock_decode:
+        mock_decode.return_value = {"sub": "999"}
+        token = "token"
+
+        # First call: Should hit DB
+        user1 = await auth.get_current_active_user(token, mock_db)
+        assert user1.id == 999
+        assert isinstance(user1, models.User) # Verify it returns models.User
+        assert mock_filter.first.call_count == 1
+
+        # Second call: Should hit Cache (DB call count remains 1)
+        user2 = await auth.get_current_active_user(token, mock_db)
+        assert user2.id == 999
+        assert isinstance(user2, models.User)
+        assert mock_db.merge.call_count == 1 # Verify merge was called on hit
+        assert mock_filter.first.call_count == 1 # Still 1!
+
+        # Manually expire/clear cache and test again
+        auth.user_cache.clear()
+        user3 = await auth.get_current_active_user(token, mock_db)
+        assert mock_filter.first.call_count == 2 # Now 2

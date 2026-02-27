@@ -4,6 +4,8 @@ from sqlalchemy.orm import Session
 import httpx
 import os
 import logging
+import time
+from typing import Dict, Tuple, Optional
 
 # Import modules instead of specific items where feasible
 import models 
@@ -34,6 +36,34 @@ oauth.register( name='google', # ... config ...
     client_kwargs={'scope': 'openid email profile'},
 )
 
+# --- Caching ---
+class SimpleTTLCache:
+    """A simple thread-safe, in-memory cache with TTL expiration."""
+    def __init__(self, ttl_seconds: int = 60):
+        # Cache stores: user_id -> (user_data_dict, timestamp)
+        # Using a raw dictionary of attributes to dynamically capture all columns
+        self._cache: Dict[int, Tuple[dict, float]] = {}
+        self._ttl = ttl_seconds
+
+    def get(self, key: int) -> Optional[dict]:
+        entry = self._cache.get(key)
+        if entry:
+            user_data, timestamp = entry
+            if time.time() - timestamp < self._ttl:
+                return user_data
+            else:
+                self._cache.pop(key, None) # Remove if expired
+        return None
+
+    def set(self, key: int, value: dict):
+        self._cache[key] = (value, time.time())
+
+    def clear(self):
+        self._cache.clear()
+
+# Initialize global cache for user dictionary data (60 seconds TTL)
+user_cache = SimpleTTLCache(ttl_seconds=60)
+
 # --- Dependency ---
 async def get_current_active_user(token: str = Depends(security.oauth2_scheme), db: Session = Depends(database.get_db)) -> models.User:
     """Dependency to get the current authenticated user from a token."""
@@ -43,13 +73,34 @@ async def get_current_active_user(token: str = Depends(security.oauth2_scheme), 
     )
     payload = security.decode_access_token(token)
     if payload is None: raise credentials_exception
-    user_id: str = payload.get("sub")
-    if user_id is None: raise credentials_exception
+    user_id_str: str = payload.get("sub")
+    if user_id_str is None: raise credentials_exception
+
     try:
-        user = db.query(models.User).filter(models.User.id == int(user_id)).first()
+        user_id = int(user_id_str)
     except ValueError: # Handle case where sub is not an int
          raise credentials_exception
+
+    # Check Cache First
+    cached_user_data = user_cache.get(user_id)
+    if cached_user_data:
+        # Reconstruct the SQLAlchemy object dynamically from the cached dict
+        user_instance = models.User(**cached_user_data)
+        # Reattach to the current session WITHOUT querying the DB (load=False)
+        # This restores lazy-loading and persistence capabilities while remaining fast
+        merged_user = db.merge(user_instance, load=False)
+        return merged_user
+
+    # Cache Miss - Query DB
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+
     if user is None: raise credentials_exception
+
+    # Store all loaded column attributes dynamically as a dictionary
+    # Exclude internal SQLAlchemy state
+    user_data = {k: v for k, v in user.__dict__.items() if not k.startswith('_sa_')}
+    user_cache.set(user_id, user_data)
+
     return user
 
 # --- Helper Functions ---
