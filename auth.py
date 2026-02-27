@@ -52,20 +52,66 @@ async def get_current_active_user(token: str = Depends(security.oauth2_scheme), 
 
 # --- Helper Functions ---
 async def get_user_repositories(current_user: models.User):
-    # ... (implementation is unchanged)
-    pass
+    """Fetches list of repositories for the authenticated user from GitHub."""
+    if not current_user.github_access_token:
+        raise HTTPException(status_code=403, detail="GitHub account not linked.")
+
+    try:
+        token = security.decrypt_data(current_user.github_access_token)
+        g = Github(token)
+        user = g.get_user()
+        repos = []
+        for repo in user.get_repos(sort="updated", direction="desc"):
+            repos.append({
+                "name": repo.name,
+                "full_name": repo.full_name,
+                "html_url": repo.html_url,
+                "description": repo.description,
+                "language": repo.language,
+                "updated_at": repo.updated_at.isoformat()
+            })
+        return repos
+    except GithubException as e:
+        print(f"GitHub API Error: {e}")
+        raise HTTPException(status_code=400, detail="Failed to fetch repositories from GitHub.")
+    except Exception as e:
+        print(f"Error fetching repositories: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error while fetching repositories.")
 
 async def verify_repo_permission(repo_name: str, token: str):
-    # ... (implementation is unchanged)
-    pass
+    """Verifies if the user has push access to the repository."""
+    try:
+        g = Github(token)
+        repo = g.get_repo(repo_name)
+        if not repo.permissions.push:
+             raise HTTPException(status_code=403, detail="You do not have write access to this repository.")
+    except GithubException as e:
+        if e.status == 404:
+             raise HTTPException(status_code=404, detail="Repository not found.")
+        raise HTTPException(status_code=400, detail="Failed to verify repository permissions.")
 
 async def generate_ai_fix(fix_request: schemas.GenerateFixRequest):
-    # ... (implementation is unchanged)
-    pass
+    """Generates a fix for a code issue."""
+    try:
+        fixed_code = await ai_service.generate_code_fix(
+            fix_request.code_snippet,
+            fix_request.issue_type,
+            fix_request.file_path,
+            fix_request.line
+        )
+        return {"fixed_code": fixed_code}
+    except Exception as e:
+        print(f"Error generating fix: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate fix: {str(e)}")
 
 async def modernize_public_snippet(snippet_request: schemas.ModernizeSnippetRequest):
-     # ... (implementation is unchanged)
-     pass
+     """Modernizes a public code snippet."""
+     try:
+         modernized_code = await ai_service.modernize_code_snippet(snippet_request.code_snippet)
+         return {"modernized_code": modernized_code}
+     except Exception as e:
+         print(f"Error modernizing snippet: {e}")
+         raise HTTPException(status_code=500, detail=f"Failed to modernize snippet: {str(e)}")
 
 # --- Standard Login/Signup Routes ---
 @router.post("/signup", response_model=schemas.User) # Use schemas.User here

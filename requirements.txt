@@ -14,3 +14,6 @@ tomli
 google-generativeai
 celery
 redis
+PyGithub
+email-validator
+python-multipart
