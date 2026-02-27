@@ -2,7 +2,7 @@ import pytest
 import os
 import ast
 from unittest.mock import MagicMock
-from scanner import analyze_python_file, DeprecatedSyntaxVisitor
+from scanner import analyze_python_file, DeprecatedSyntaxVisitor, parse_pinned_requirements
 
 # Fixture to create a temporary file with content
 @pytest.fixture
@@ -83,3 +83,50 @@ def test_deprecated_syntax_visitor_raise():
     assert issue['type'] == 'Old-style raise statement (Python 2)'
     assert issue['file'] == 'test.py'
     assert issue['line'] == 2
+
+def test_parse_pinned_requirements_valid(tmp_path):
+    """Test that parse_pinned_requirements correctly parses valid requirements.txt files."""
+    requirements_content = """
+    flask==2.0.1
+    requests==2.26.0
+    # This is a comment
+
+    -e . # Editable install (should be skipped)
+    numpy>=1.21.0 # Not pinned exactly (should be skipped)
+    invalid-line-here
+    pandas==1.3.3
+    """
+
+    # Using tmp_path directly to create requirements.txt since create_temp_file defaults to .py extension
+    p = tmp_path / "requirements.txt"
+    p.write_text(requirements_content, encoding='utf-8')
+    filepath = str(p)
+
+    dependencies = parse_pinned_requirements(filepath)
+
+    # Expected: flask, requests, pandas.
+    # numpy is skipped because it uses >=
+    # invalid lines are skipped
+
+    assert len(dependencies) == 3
+
+    # Sort or check individually
+    dep_names = [d['name'] for d in dependencies]
+    assert 'flask' in dep_names
+    assert 'requests' in dep_names
+    assert 'pandas' in dep_names
+
+    # Check versions
+    flask_dep = next(d for d in dependencies if d['name'] == 'flask')
+    assert flask_dep['version'] == '2.0.1'
+
+    requests_dep = next(d for d in dependencies if d['name'] == 'requests')
+    assert requests_dep['version'] == '2.26.0'
+
+    pandas_dep = next(d for d in dependencies if d['name'] == 'pandas')
+    assert pandas_dep['version'] == '1.3.3'
+
+def test_parse_pinned_requirements_file_not_found():
+    """Test parse_pinned_requirements with a non-existent file."""
+    dependencies = parse_pinned_requirements("non_existent_requirements.txt")
+    assert dependencies == []
