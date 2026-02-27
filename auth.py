@@ -3,6 +3,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 import httpx
 import os
+import logging
 import traceback # For logging detailed errors
 
 # Import modules instead of specific items where feasible
@@ -16,6 +17,8 @@ import ai_service
 from authlib.integrations.starlette_client import OAuth
 from fastapi.responses import RedirectResponse
 from github import Github, GithubException # PyGithub for creating PRs
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -72,10 +75,10 @@ async def get_user_repositories(current_user: models.User):
             })
         return repos
     except GithubException as e:
-        print(f"GitHub API Error: {e}")
+        logger.error(f"GitHub API Error: {e}")
         raise HTTPException(status_code=400, detail="Failed to fetch repositories from GitHub.")
     except Exception as e:
-        print(f"Error fetching repositories: {e}")
+        logger.error(f"Error fetching repositories: {e}")
         raise HTTPException(status_code=500, detail="Internal server error while fetching repositories.")
 
 async def verify_repo_permission(repo_name: str, token: str):
@@ -101,7 +104,7 @@ async def generate_ai_fix(fix_request: schemas.GenerateFixRequest):
         )
         return {"fixed_code": fixed_code}
     except Exception as e:
-        print(f"Error generating fix: {e}")
+        logger.error(f"Error generating fix: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to generate fix: {str(e)}")
 
 async def modernize_public_snippet(snippet_request: schemas.ModernizeSnippetRequest):
@@ -110,7 +113,7 @@ async def modernize_public_snippet(snippet_request: schemas.ModernizeSnippetRequ
          modernized_code = await ai_service.modernize_code_snippet(snippet_request.code_snippet)
          return {"modernized_code": modernized_code}
      except Exception as e:
-         print(f"Error modernizing snippet: {e}")
+         logger.error(f"Error modernizing snippet: {e}")
          raise HTTPException(status_code=500, detail=f"Failed to modernize snippet: {str(e)}")
 
 # --- Standard Login/Signup Routes ---
@@ -183,12 +186,12 @@ async def handle_create_pr(pr_request: schemas.CreatePRRequest, current_user: mo
         return {"pr_url": pr.html_url}
 
     except GithubException as e:
-        print(f"GitHub API Error: {e}")
-        traceback.print_exc()
+        logger.error(f"GitHub API Error: {e}")
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=400, detail=f"GitHub Error: {e.data.get('message', 'Could not create PR. Check repository permissions.')}")
     except Exception as e:
-        print(f"Error creating PR: {e}")
-        traceback.print_exc()
+        logger.error(f"Error creating PR: {e}")
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
 
 
@@ -201,8 +204,8 @@ async def handle_generate_tests(test_request: schemas.GenerateTestsRequest) -> d
         )
         return {"test_code": test_code}
     except Exception as e:
-        print(f"Error generating tests: {e}")
-        traceback.print_exc()
+        logger.error(f"Error generating tests: {e}")
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Failed to generate tests: {str(e)}")
 
 
@@ -235,7 +238,7 @@ async def handle_strategic_summary(current_user: models.User, db: Session) -> di
         summary = await ai_service.generate_strategic_summary(report_summaries)
         return {"summary": summary}
     except Exception as e:
-        print(f"Error generating strategic summary: {e}")
-        traceback.print_exc()
+        logger.error(f"Error generating strategic summary: {e}")
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Failed to generate summary: {str(e)}")
 
