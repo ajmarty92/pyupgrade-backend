@@ -1,16 +1,14 @@
 import os
 import json
-import google.generativeai as genai
+from google import genai
 from dotenv import load_dotenv
 
 load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if not GEMINI_API_KEY:
     raise ValueError("GEMINI_API_KEY not found in environment variables.")
-genai.configure(api_key=GEMINI_API_KEY)
 
-code_generation_model = genai.GenerativeModel('gemini-1.5-flash')
-report_generation_model = genai.GenerativeModel('gemini-1.5-flash', generation_config={"response_mime_type": "application/json"})
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 async def generate_code_fix(code_snippet: str, issue_type: str, file_path: str, line: int) -> str:
     """Generates a fix for a specific code issue using Gemini."""
@@ -28,7 +26,10 @@ async def generate_code_fix(code_snippet: str, issue_type: str, file_path: str, 
     Your task is to provide a corrected version of this code snippet that fixes the issue while preserving the original logic.
     Output ONLY the corrected Python code, without any markdown formatting or explanations.
     """
-    response = await code_generation_model.generate_content_async(prompt)
+    response = await client.aio.models.generate_content(
+        model='gemini-1.5-flash',
+        contents=prompt
+    )
     return response.text.strip()
 
 async def generate_report_summary_and_steps(report_data: dict) -> dict:
@@ -47,7 +48,11 @@ async def generate_report_summary_and_steps(report_data: dict) -> dict:
     - "effort": string
     - "steps": list of strings
     """
-    response = await report_generation_model.generate_content_async(prompt)
+    response = await client.aio.models.generate_content(
+        model='gemini-1.5-flash',
+        contents=prompt,
+        config={'response_mime_type': 'application/json'}
+    )
     try:
         return json.loads(response.text)
     except json.JSONDecodeError:
@@ -74,7 +79,10 @@ async def modernize_code_snippet(code_snippet: str) -> str:
     - Preserve the original logic.
     - Output ONLY the modernized Python code, without any markdown formatting or explanations.
     """
-    response = await code_generation_model.generate_content_async(prompt)
+    response = await client.aio.models.generate_content(
+        model='gemini-1.5-flash',
+        contents=prompt
+    )
     return response.text.strip()
 
 # --- NEW AI FUNCTIONS ---
@@ -95,8 +103,24 @@ async def generate_pr_description(old_code: str, new_code: str, issue_type: str,
     --- NEW CODE ---
     {new_code}
     """
-    response = await report_generation_model.generate_content_async([system_instruction, prompt])
-    return response.text
+    # Note: google-genai handles system instructions differently, usually via config.
+    # However, for simplicity and compatibility with previous prompt structure,
+    # we can combine them or use the config if strictly required.
+    # The new SDK supports system_instruction in config.
+
+    response = await client.aio.models.generate_content(
+        model='gemini-1.5-flash',
+        contents=prompt,
+        config={
+            'response_mime_type': 'application/json',
+            'system_instruction': system_instruction
+        }
+    )
+    try:
+         return json.loads(response.text)
+    except json.JSONDecodeError:
+        return {"title": f"Fix {issue_type}", "body": "Automated fix."}
+
 
 async def generate_unit_tests(old_code: str, new_code: str) -> str:
     """Generates pytest unit tests to verify the behavior of a code change."""
@@ -118,7 +142,10 @@ async def generate_unit_tests(old_code: str, new_code: str) -> str:
     2. Crucially, ensure your tests would pass for *both* the old and new code snippets to verify that the refactoring did not change the core logic.
     3. Provide only the Python code for the tests, with no explanations or markdown formatting.
     """
-    response = await code_generation_model.generate_content_async(prompt)
+    response = await client.aio.models.generate_content(
+        model='gemini-1.5-flash',
+        contents=prompt
+    )
     return response.text.strip()
 
 async def generate_strategic_summary(scan_reports: list[dict]) -> str:
@@ -135,6 +162,8 @@ async def generate_strategic_summary(scan_reports: list[dict]) -> str:
     - Frame the analysis in terms of business impact (e.g., security exposure, development slowdown).
     - The output should be a professional, well-formatted markdown string.
     """
-    response = await code_generation_model.generate_content_async(prompt)
+    response = await client.aio.models.generate_content(
+        model='gemini-1.5-flash',
+        contents=prompt
+    )
     return response.text.strip()
-

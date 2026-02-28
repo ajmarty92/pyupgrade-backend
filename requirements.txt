@@ -11,7 +11,7 @@ authlib
 GitPython
 packaging
 tomli
-google-generativeai
+google-genai
 celery
 redis
 PyGithub
