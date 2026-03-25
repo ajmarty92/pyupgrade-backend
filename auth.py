@@ -16,7 +16,6 @@ import ai_service
 
 # Import specific tools needed
 from authlib.integrations.starlette_client import OAuth
-from fastapi.responses import RedirectResponse
 from github import Github, GithubException # PyGithub for creating PRs
 
 logger = logging.getLogger(__name__)
