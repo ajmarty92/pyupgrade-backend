@@ -1,10 +1,8 @@
 import os
-from fastapi import FastAPI, Depends, HTTPException, status, Request
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from celery.result import AsyncResult
-import json
 import logging
 
 # Configure logging
