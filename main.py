@@ -69,7 +69,7 @@ async def start_scan(repo_data: schemas.RepoScanRequest, current_user: models.Us
     except Exception as e:
         # Log the full error for debugging
         logger.error("Error starting scan: %s", e, exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"An unexpected error occurred: {str(e)}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An unexpected error occurred while starting the scan. Please try again later.")
 
 @app.get("/api/scan/status/{task_id}")
 async def get_scan_status(task_id: str):

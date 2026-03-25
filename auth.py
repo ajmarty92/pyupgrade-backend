@@ -154,7 +154,7 @@ async def generate_ai_fix(fix_request: schemas.GenerateFixRequest):
         return {"fixed_code": fixed_code}
     except Exception as e:
         logger.error(f"Error generating fix: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to generate fix: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to generate fix due to an unexpected error.")
 
 async def modernize_public_snippet(snippet_request: schemas.ModernizeSnippetRequest):
      """Modernizes a public code snippet."""
@@ -163,7 +163,7 @@ async def modernize_public_snippet(snippet_request: schemas.ModernizeSnippetRequ
          return {"modernized_code": modernized_code}
      except Exception as e:
          logger.error(f"Error modernizing snippet: {e}", exc_info=True)
-         raise HTTPException(status_code=500, detail=f"Failed to modernize snippet: {str(e)}")
+         raise HTTPException(status_code=500, detail="Failed to modernize snippet due to an unexpected error.")
 
 # --- Standard Login/Signup Routes ---
 @router.post("/signup", response_model=schemas.User) # Use schemas.User here
@@ -239,7 +239,7 @@ async def handle_create_pr(pr_request: schemas.CreatePRRequest, current_user: mo
         raise HTTPException(status_code=400, detail=f"GitHub Error: {e.data.get('message', 'Could not create PR. Check repository permissions.')}")
     except Exception as e:
         logger.error(f"Error creating PR: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
+        raise HTTPException(status_code=500, detail="An unexpected error occurred while creating the PR.")
 
 
 async def handle_generate_tests(test_request: schemas.GenerateTestsRequest) -> dict:
@@ -252,7 +252,7 @@ async def handle_generate_tests(test_request: schemas.GenerateTestsRequest) -> d
         return {"test_code": test_code}
     except Exception as e:
         logger.error(f"Error generating tests: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to generate tests: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to generate tests due to an unexpected error.")
 
 
 async def handle_strategic_summary(current_user: models.User, db: Session) -> dict:
@@ -285,4 +285,4 @@ async def handle_strategic_summary(current_user: models.User, db: Session) -> di
         return {"summary": summary}
     except Exception as e:
         logger.error(f"Error generating strategic summary: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to generate summary: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to generate strategic summary due to an unexpected error.")
