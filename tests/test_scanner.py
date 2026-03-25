@@ -2,7 +2,7 @@ import pytest
 import os
 import ast
 from unittest.mock import MagicMock
-from scanner import analyze_python_file, DeprecatedSyntaxVisitor
+from scanner import analyze_python_file, DeprecatedSyntaxVisitor, parse_pinned_requirements
 
 # Fixture to create a temporary file with content
 @pytest.fixture
@@ -83,3 +83,23 @@ def test_deprecated_syntax_visitor_raise():
     assert issue['type'] == 'Old-style raise statement (Python 2)'
     assert issue['file'] == 'test.py'
     assert issue['line'] == 2
+
+def test_parse_pinned_requirements_invalid_lines(create_temp_file, capsys):
+    """Test that parse_pinned_requirements handles invalid lines gracefully."""
+    content = """
+requests==2.28.0
+invalid_pkg!!!
+    """.strip()
+    filepath = create_temp_file(content)
+
+    dependencies = parse_pinned_requirements(filepath)
+
+    # Check that valid dependency was parsed
+    assert len(dependencies) == 1
+    assert dependencies[0]['name'] == 'requests'
+    assert dependencies[0]['version'] == '2.28.0'
+
+    # Check that invalid line caused a warning printed to stdout
+    captured = capsys.readouterr()
+    assert "Warning: Could not parse line" in captured.out
+    assert "invalid_pkg!!!" in captured.out
