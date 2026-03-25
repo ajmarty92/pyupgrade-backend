@@ -91,13 +91,13 @@ async def test_get_current_active_user_cache():
         token = "token"
 
         # First call: Should hit DB
-        user1 = await auth.get_current_active_user(token, mock_db)
+        user1 = auth.get_current_active_user(token, mock_db)
         assert user1.id == 999
         assert isinstance(user1, models.User) # Verify it returns models.User
         assert mock_filter.first.call_count == 1
 
         # Second call: Should hit Cache (DB call count remains 1)
-        user2 = await auth.get_current_active_user(token, mock_db)
+        user2 = auth.get_current_active_user(token, mock_db)
         assert user2.id == 999
         assert isinstance(user2, models.User)
         assert mock_db.merge.call_count == 1 # Verify merge was called on hit
@@ -105,5 +105,5 @@ async def test_get_current_active_user_cache():
 
         # Manually expire/clear cache and test again
         auth.user_cache.clear()
-        user3 = await auth.get_current_active_user(token, mock_db)
+        user3 = auth.get_current_active_user(token, mock_db)
         assert mock_filter.first.call_count == 2 # Now 2

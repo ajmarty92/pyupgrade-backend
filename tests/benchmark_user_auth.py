@@ -44,7 +44,7 @@ async def run_benchmark():
 
         start_time = time.time()
         for _ in range(iterations):
-            user_result = await auth.get_current_active_user(token, mock_db)
+            user_result = auth.get_current_active_user(token, mock_db)
             # Basic validation
             assert user_result.id == 1
             assert user_result.email == "test@example.com"
