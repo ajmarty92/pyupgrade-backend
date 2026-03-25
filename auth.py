@@ -65,7 +65,7 @@ class SimpleTTLCache:
 user_cache = SimpleTTLCache(ttl_seconds=60)
 
 # --- Dependency ---
-async def get_current_active_user(token: str = Depends(security.oauth2_scheme), db: Session = Depends(database.get_db)) -> models.User:
+def get_current_active_user(token: str = Depends(security.oauth2_scheme), db: Session = Depends(database.get_db)) -> models.User:
     """Dependency to get the current authenticated user from a token."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED, detail="Could not validate credentials",
@@ -168,7 +168,7 @@ async def modernize_public_snippet(snippet_request: schemas.ModernizeSnippetRequ
 
 # --- Standard Login/Signup Routes ---
 @router.post("/signup", response_model=schemas.User) # Use schemas.User here
-async def signup(user_data: schemas.UserCreate, db: Session = Depends(database.get_db)): # Use UserCreate for input
+def signup(user_data: schemas.UserCreate, db: Session = Depends(database.get_db)): # Use UserCreate for input
     db_user = db.query(models.User).filter(models.User.email == user_data.email).first()
     if db_user: raise HTTPException(status_code=400, detail="Email already registered")
     hashed_password = security.get_password_hash(user_data.password)
@@ -177,7 +177,7 @@ async def signup(user_data: schemas.UserCreate, db: Session = Depends(database.g
     return new_user
 
 @router.post("/login")
-async def login(response: Response, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(database.get_db)):
+def login(response: Response, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(database.get_db)):
     user = security.authenticate_user(db, form_data.username, form_data.password)
     if not user: raise HTTPException(status_code=401, detail="Incorrect email or password")
     access_token = security.create_access_token(data={"sub": str(user.id)})
