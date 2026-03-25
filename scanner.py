@@ -261,7 +261,10 @@ def analyze_repository(repo_name, github_token):
         dependency_report = check_osv_for_vulnerabilities(dependencies)
         
         syntax_issues = []
-        for root, _, files in os.walk(temp_dir):
+        exclude_dirs = {'.git', 'node_modules', 'venv', '__pycache__'}
+        for root, dirs, files in os.walk(temp_dir):
+            # In-place modification of dirs to skip excluded directories
+            dirs[:] = [d for d in dirs if d not in exclude_dirs]
             for file in files:
                 if file.endswith('.py'):
                     file_path = os.path.join(root, file)
