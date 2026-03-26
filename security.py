@@ -8,6 +8,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from dotenv import load_dotenv
 from sqlalchemy.orm import Session
+from fastapi.concurrency import run_in_threadpool
 import database, models # Import database and models
 
 load_dotenv()
@@ -33,14 +34,17 @@ def get_password_hash(password):
     return pwd_context.hash(password)
 
 # --- NEW: Authenticate User Function ---
-def authenticate_user(db: Session, email: str, password: str) -> Optional[models.User]:
+async def authenticate_user(db: Session, email: str, password: str) -> Optional[models.User]:
     """Finds user by email and verifies password."""
-    user = db.query(models.User).filter(models.User.email == email).first()
-    if not user:
-        return None
-    if not verify_password(password, user.hashed_password):
-        return None
-    return user
+    def _auth_sync():
+        user = db.query(models.User).filter(models.User.email == email).first()
+        if not user:
+            return None
+        if not verify_password(password, user.hashed_password):
+            return None
+        return user
+
+    return await run_in_threadpool(_auth_sync)
 
 # --- JWT Token ---
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
