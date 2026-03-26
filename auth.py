@@ -124,10 +124,10 @@ async def get_user_repositories(current_user: models.User):
             })
         return repos
     except GithubException as e:
-        logger.error(f"GitHub API Error: {e}", exc_info=True)
+        logger.error("GitHub API Error", exc_info=True)
         raise HTTPException(status_code=400, detail="Failed to fetch repositories from GitHub.")
     except Exception as e:
-        logger.error(f"Error fetching repositories: {e}", exc_info=True)
+        logger.error("Error fetching repositories", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error while fetching repositories.")
 
 async def verify_repo_permission(repo_name: str, token: str):
@@ -153,7 +153,7 @@ async def generate_ai_fix(fix_request: schemas.GenerateFixRequest):
         )
         return {"fixed_code": fixed_code}
     except Exception as e:
-        logger.error(f"Error generating fix: {e}", exc_info=True)
+        logger.error("Error generating fix", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to generate fix due to an unexpected error.")
 
 async def modernize_public_snippet(snippet_request: schemas.ModernizeSnippetRequest):
@@ -162,7 +162,7 @@ async def modernize_public_snippet(snippet_request: schemas.ModernizeSnippetRequ
          modernized_code = await ai_service.modernize_code_snippet(snippet_request.code_snippet)
          return {"modernized_code": modernized_code}
      except Exception as e:
-         logger.error(f"Error modernizing snippet: {e}", exc_info=True)
+         logger.error("Error modernizing snippet", exc_info=True)
          raise HTTPException(status_code=500, detail="Failed to modernize snippet due to an unexpected error.")
 
 # --- Standard Login/Signup Routes ---
@@ -235,10 +235,10 @@ async def handle_create_pr(pr_request: schemas.CreatePRRequest, current_user: mo
         return {"pr_url": pr.html_url}
 
     except GithubException as e:
-        logger.error(f"GitHub API Error: {e}", exc_info=True)
-        raise HTTPException(status_code=400, detail=f"GitHub Error: {e.data.get('message', 'Could not create PR. Check repository permissions.')}")
+        logger.error("GitHub API Error", exc_info=True)
+        raise HTTPException(status_code=400, detail="Could not create PR. Check repository permissions.")
     except Exception as e:
-        logger.error(f"Error creating PR: {e}", exc_info=True)
+        logger.error("Error creating PR", exc_info=True)
         raise HTTPException(status_code=500, detail="An unexpected error occurred while creating the PR.")
 
 
@@ -251,7 +251,7 @@ async def handle_generate_tests(test_request: schemas.GenerateTestsRequest) -> d
         )
         return {"test_code": test_code}
     except Exception as e:
-        logger.error(f"Error generating tests: {e}", exc_info=True)
+        logger.error("Error generating tests", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to generate tests due to an unexpected error.")
 
 
@@ -284,5 +284,5 @@ async def handle_strategic_summary(current_user: models.User, db: Session) -> di
         summary = await ai_service.generate_strategic_summary(report_summaries)
         return {"summary": summary}
     except Exception as e:
-        logger.error(f"Error generating strategic summary: {e}", exc_info=True)
+        logger.error("Error generating strategic summary", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to generate strategic summary due to an unexpected error.")
