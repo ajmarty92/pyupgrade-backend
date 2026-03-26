@@ -132,9 +132,14 @@ async def get_user_repositories(current_user: models.User):
 
 async def verify_repo_permission(repo_name: str, token: str):
     """Verifies if the user has push access to the repository."""
+    import asyncio
     try:
-        g = Github(token)
-        repo = g.get_repo(repo_name)
+        def _fetch_repo():
+            g = Github(token)
+            return g.get_repo(repo_name)
+
+        repo = await asyncio.to_thread(_fetch_repo)
+
         if not repo.permissions.push:
              raise HTTPException(status_code=403, detail="You do not have write access to this repository.")
     except GithubException as e:
