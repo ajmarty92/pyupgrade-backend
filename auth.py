@@ -177,6 +177,8 @@ def signup(user_data: schemas.UserCreate, db: Session = Depends(database.get_db)
 
 @router.post("/login")
 def login(response: Response, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(database.get_db)):
+    # Optimized: Endpoint is a regular def instead of async def to avoid blocking the main
+    # event loop with the synchronous database queries inside authenticate_user.
     user = security.authenticate_user(db, form_data.username, form_data.password)
     if not user: raise HTTPException(status_code=401, detail="Incorrect email or password")
     access_token = security.create_access_token(data={"sub": str(user.id)})
