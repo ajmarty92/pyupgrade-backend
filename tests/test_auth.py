@@ -1,6 +1,7 @@
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
-from fastapi import HTTPException
+from fastapi import HTTPException, Response
+from fastapi.security import OAuth2PasswordRequestForm
 import auth
 import models
 import schemas
@@ -141,3 +142,78 @@ def test_get_current_active_user_no_token_anywhere_raises_401():
     with pytest.raises(HTTPException) as excinfo:
         auth.get_current_active_user(mock_request, None, MagicMock())
     assert excinfo.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_login_success_not_production():
+    mock_db = MagicMock()
+    mock_response = MagicMock(spec=Response)
+    mock_form_data = MagicMock(spec=OAuth2PasswordRequestForm)
+    mock_form_data.username = "test@example.com"
+    mock_form_data.password = "password123"
+
+    mock_user = models.User(id=1, email="test@example.com")
+
+    with patch('auth.security.authenticate_user', new_callable=AsyncMock, return_value=mock_user) as mock_auth, \
+         patch('auth.security.create_access_token', return_value="fake-token") as mock_create_token, \
+         patch('auth.os.getenv', return_value="false"):
+
+        result = await auth.login(response=mock_response, form_data=mock_form_data, db=mock_db)
+
+        mock_auth.assert_called_once_with(mock_db, "test@example.com", "password123")
+        mock_create_token.assert_called_once_with(data={"sub": "1"})
+
+        mock_response.set_cookie.assert_called_once_with(
+            key="access_token",
+            value="Bearer fake-token",
+            httponly=True,
+            samesite='lax',
+            secure=False
+        )
+        assert result == {"message": "Login successful"}
+
+
+@pytest.mark.asyncio
+async def test_login_success_production():
+    mock_db = MagicMock()
+    mock_response = MagicMock(spec=Response)
+    mock_form_data = MagicMock(spec=OAuth2PasswordRequestForm)
+    mock_form_data.username = "test@example.com"
+    mock_form_data.password = "password123"
+
+    mock_user = models.User(id=1, email="test@example.com")
+
+    with patch('auth.security.authenticate_user', new_callable=AsyncMock, return_value=mock_user) as mock_auth, \
+         patch('auth.security.create_access_token', return_value="fake-token") as mock_create_token, \
+         patch('auth.os.getenv', return_value="true"):
+
+        result = await auth.login(response=mock_response, form_data=mock_form_data, db=mock_db)
+
+        mock_auth.assert_called_once_with(mock_db, "test@example.com", "password123")
+        mock_create_token.assert_called_once_with(data={"sub": "1"})
+
+        mock_response.set_cookie.assert_called_once_with(
+            key="access_token",
+            value="Bearer fake-token",
+            httponly=True,
+            samesite='lax',
+            secure=True
+        )
+        assert result == {"message": "Login successful"}
+
+
+@pytest.mark.asyncio
+async def test_login_failure_incorrect_credentials():
+    mock_db = MagicMock()
+    mock_response = MagicMock(spec=Response)
+    mock_form_data = MagicMock(spec=OAuth2PasswordRequestForm)
+    mock_form_data.username = "test@example.com"
+    mock_form_data.password = "wrongpassword"
+
+    with patch('auth.security.authenticate_user', new_callable=AsyncMock, return_value=None) as mock_auth:
+        with pytest.raises(HTTPException) as excinfo:
+            await auth.login(response=mock_response, form_data=mock_form_data, db=mock_db)
+
+        assert excinfo.value.status_code == 401
+        assert excinfo.value.detail == "Incorrect email or password"
+        mock_auth.assert_called_once_with(mock_db, "test@example.com", "wrongpassword")
