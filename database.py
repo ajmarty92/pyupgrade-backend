@@ -6,7 +6,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Get the database URL from environment variable (Heroku sets this)
+# Get the database URL from environment variable (set automatically by
+# `fly postgres attach`, or manually via `fly secrets set`)
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 # --- FIX: Explicitly specify the psycopg2 driver ---
