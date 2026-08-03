@@ -7,3 +7,4 @@ from cryptography.fernet import Fernet
 os.environ["FERNET_KEY"] = Fernet.generate_key().decode()
 os.environ["GEMINI_API_KEY"] = "dummy_gemini_key"
 os.environ["JWT_SECRET_KEY"] = "dummy_jwt_secret"
+os.environ["SESSION_SECRET_KEY"] = "dummy_session_secret"

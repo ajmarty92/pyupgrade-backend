@@ -86,18 +86,21 @@ async def test_get_current_active_user_cache():
     # Mock db.merge to return the passed-in instance to satisfy tests
     mock_db.merge.side_effect = lambda instance, load: instance
 
+    mock_request = MagicMock()
+    mock_request.cookies = {}
+
     with patch('auth.security.decode_access_token') as mock_decode:
         mock_decode.return_value = {"sub": "999"}
         token = "token"
 
         # First call: Should hit DB
-        user1 = auth.get_current_active_user(token, mock_db)
+        user1 = auth.get_current_active_user(mock_request, token, mock_db)
         assert user1.id == 999
         assert isinstance(user1, models.User) # Verify it returns models.User
         assert mock_filter.first.call_count == 1
 
         # Second call: Should hit Cache (DB call count remains 1)
-        user2 = auth.get_current_active_user(token, mock_db)
+        user2 = auth.get_current_active_user(mock_request, token, mock_db)
         assert user2.id == 999
         assert isinstance(user2, models.User)
         assert mock_db.merge.call_count == 1 # Verify merge was called on hit
@@ -105,5 +108,36 @@ async def test_get_current_active_user_cache():
 
         # Manually expire/clear cache and test again
         auth.user_cache.clear()
-        user3 = auth.get_current_active_user(token, mock_db)
+        user3 = auth.get_current_active_user(mock_request, token, mock_db)
         assert mock_filter.first.call_count == 2 # Now 2
+
+
+def test_get_current_active_user_falls_back_to_cookie():
+    """The browser frontend authenticates via the access_token cookie, not a
+    Bearer header, so no header must still succeed when the cookie is set."""
+    auth.user_cache.clear()
+
+    mock_db = MagicMock()
+    mock_user = models.User(id=42, email="cookie@test.com")
+    mock_db.query.return_value.filter.return_value.first.return_value = mock_user
+
+    mock_request = MagicMock()
+    mock_request.cookies = {"access_token": "Bearer cookie-jwt"}
+
+    with patch('auth.security.decode_access_token') as mock_decode:
+        mock_decode.return_value = {"sub": "42"}
+
+        user = auth.get_current_active_user(mock_request, None, mock_db)
+
+        mock_decode.assert_called_once_with("cookie-jwt")
+        assert user.id == 42
+
+
+def test_get_current_active_user_no_token_anywhere_raises_401():
+    auth.user_cache.clear()
+    mock_request = MagicMock()
+    mock_request.cookies = {}
+
+    with pytest.raises(HTTPException) as excinfo:
+        auth.get_current_active_user(mock_request, None, MagicMock())
+    assert excinfo.value.status_code == 401

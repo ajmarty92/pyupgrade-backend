@@ -24,3 +24,12 @@ class ScanReport(Base):
 
     user = relationship("User", back_populates="scan_reports")
 
+class ScanTask(Base):
+    """Maps a Celery task_id to the user who started it, so scan status can
+    be scoped to its owner instead of being readable by anyone who knows/
+    guesses the task_id."""
+    __tablename__ = "scan_tasks"
+    task_id = Column(String, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+

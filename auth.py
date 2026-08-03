@@ -1,21 +1,23 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Response
+from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
 from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 import httpx
 import os
 import logging
 import time
 from typing import Dict, Tuple, Optional
+from urllib.parse import urlencode
 
 # Import modules instead of specific items where feasible
-import models 
+import models
 import schemas # Import the whole module
-import security 
-import database 
-import ai_service 
+import security
+import database
+import ai_service
 
 # Import specific tools needed
-from authlib.integrations.starlette_client import OAuth
+from authlib.integrations.starlette_client import OAuth, OAuthError
 from github import Github, GithubException # PyGithub for creating PRs
 
 logger = logging.getLogger(__name__)
@@ -60,16 +62,35 @@ class SimpleTTLCache:
     def clear(self):
         self._cache.clear()
 
+    def invalidate(self, key: int):
+        self._cache.pop(key, None)
+
 # Initialize global cache for user dictionary data (60 seconds TTL)
 user_cache = SimpleTTLCache(ttl_seconds=60)
 
 # --- Dependency ---
-def get_current_active_user(token: str = Depends(security.oauth2_scheme), db: Session = Depends(database.get_db)) -> models.User:
-    """Dependency to get the current authenticated user from a token."""
+def get_current_active_user(
+    request: Request,
+    token: Optional[str] = Depends(security.oauth2_scheme),
+    db: Session = Depends(database.get_db),
+) -> models.User:
+    """Dependency to get the current authenticated user from a token.
+
+    Accepts the token either as an `Authorization: Bearer` header (for
+    API clients) or from the `access_token` cookie set by /auth/login and
+    the OAuth callbacks (used by the browser-based frontend).
+    """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED, detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    if not token:
+        cookie_value = request.cookies.get("access_token", "")
+        if cookie_value.lower().startswith("bearer "):
+            token = cookie_value.split(" ", 1)[1]
+    if not token:
+        raise credentials_exception
+
     payload = security.decode_access_token(token)
     if payload is None: raise credentials_exception
     user_id_str: str = payload.get("sub")
@@ -179,13 +200,100 @@ def signup(user_data: schemas.UserCreate, db: Session = Depends(database.get_db)
 def login(response: Response, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(database.get_db)):
     user = security.authenticate_user(db, form_data.username, form_data.password)
     if not user: raise HTTPException(status_code=401, detail="Incorrect email or password")
-    access_token = security.create_access_token(data={"sub": str(user.id)})
-    is_production = os.getenv("PRODUCTION", "false").lower() == "true"
-    response.set_cookie(key="access_token", value=f"Bearer {access_token}", httponly=True, samesite='lax', secure=is_production)
+    _issue_session_cookie(response, user)
     return {"message": "Login successful"}
 
 # --- OAuth Routes ---
-# ... (github_login, github_callback, google_login, google_callback are unchanged)
+
+def _issue_session_cookie(response: Response, user: models.User):
+    """Mints a JWT for the given user and attaches it as an httpOnly cookie."""
+    access_token = security.create_access_token(data={"sub": str(user.id)})
+    is_production = os.getenv("PRODUCTION", "false").lower() == "true"
+    response.set_cookie(
+        key="access_token", value=f"Bearer {access_token}",
+        httponly=True, samesite='lax', secure=is_production,
+    )
+
+def _frontend_redirect(path: str = "/app.html", **query) -> RedirectResponse:
+    url = f"{security.FRONTEND_URL}{path}"
+    if query:
+        url = f"{url}?{urlencode(query)}"
+    return RedirectResponse(url=url)
+
+@router.get("/github/login")
+async def github_login(request: Request):
+    redirect_uri = request.url_for("github_callback")
+    return await oauth.github.authorize_redirect(request, redirect_uri)
+
+@router.get("/github/callback")
+async def github_callback(request: Request, db: Session = Depends(database.get_db)):
+    try:
+        token = await oauth.github.authorize_access_token(request)
+    except OAuthError as e:
+        logger.error(f"GitHub OAuth error: {e}", exc_info=True)
+        return _frontend_redirect(error="oauth_failed")
+
+    try:
+        profile = (await oauth.github.get('user', token=token)).json()
+        email = profile.get('email')
+        if not email:
+            # Primary email is private on many GitHub accounts; the base
+            # 'user' scope doesn't return it, so fall back to /user/emails.
+            emails = (await oauth.github.get('user/emails', token=token)).json()
+            email = next((e['email'] for e in emails if e.get('primary') and e.get('verified')), None) \
+                or next((e['email'] for e in emails if e.get('verified')), None)
+    except Exception as e:
+        logger.error(f"Failed to fetch GitHub profile: {e}", exc_info=True)
+        return _frontend_redirect(error="oauth_profile_failed")
+
+    if not email:
+        return _frontend_redirect(error="no_verified_email")
+
+    encrypted_token = security.encrypt_data(token['access_token'])
+    user = db.query(models.User).filter(models.User.email == email).first()
+    if user:
+        user.github_access_token = encrypted_token
+        user_cache.invalidate(user.id)
+    else:
+        user = models.User(email=email, provider='github', github_access_token=encrypted_token)
+        db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    redirect = _frontend_redirect()
+    _issue_session_cookie(redirect, user)
+    return redirect
+
+@router.get("/google/login")
+async def google_login(request: Request):
+    redirect_uri = request.url_for("google_callback")
+    return await oauth.google.authorize_redirect(request, redirect_uri)
+
+@router.get("/google/callback")
+async def google_callback(request: Request, db: Session = Depends(database.get_db)):
+    try:
+        token = await oauth.google.authorize_access_token(request)
+    except OAuthError as e:
+        logger.error(f"Google OAuth error: {e}", exc_info=True)
+        return _frontend_redirect(error="oauth_failed")
+
+    userinfo = token.get('userinfo') or {}
+    email = userinfo.get('email')
+    if not email:
+        return _frontend_redirect(error="no_verified_email")
+
+    user = db.query(models.User).filter(models.User.email == email).first()
+    if not user:
+        user = models.User(email=email, provider='google')
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    else:
+        user_cache.invalidate(user.id)
+
+    redirect = _frontend_redirect()
+    _issue_session_cookie(redirect, user)
+    return redirect
 
 # --- NEW AI FEATURE HANDLERS ---
 
@@ -235,8 +343,8 @@ async def handle_create_pr(pr_request: schemas.CreatePRRequest, current_user: mo
         return {"pr_url": pr.html_url}
 
     except GithubException as e:
-        logger.error(f"GitHub API Error: {e}", exc_info=True)
-        raise HTTPException(status_code=400, detail=f"GitHub Error: {e.data.get('message', 'Could not create PR. Check repository permissions.')}")
+        logger.error(f"GitHub API Error creating PR: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail="Could not create PR. Check repository permissions.")
     except Exception as e:
         logger.error(f"Error creating PR: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An unexpected error occurred while creating the PR.")

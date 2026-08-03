@@ -1,6 +1,7 @@
 import os
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy.orm import Session
 from celery.result import AsyncResult
 import logging
@@ -23,7 +24,9 @@ app = FastAPI()
 
 # --- Security & Middleware ---
 if os.getenv("PRODUCTION"):
-    origins = ["https://pyupgrade.com"] # Replace with your actual frontend domain
+    # The marketing site (public demo widget, no cookies) and the actual app
+    # deployment (cookie-authenticated) are two different origins.
+    origins = list({"https://pyupgrade.com", security.FRONTEND_URL})
 else:
     origins = [
         "http://localhost", "http://localhost:3000",
@@ -36,6 +39,16 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+# Required by authlib to persist OAuth state/nonce between the redirect to
+# GitHub/Google and the callback request.
+is_production = os.getenv("PRODUCTION", "false").lower() == "true"
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=security.SESSION_SECRET_KEY,
+    same_site="lax",
+    https_only=is_production,
 )
 
 # --- Routers ---
@@ -53,14 +66,16 @@ async def get_repositories(current_user: models.User = Depends(auth.get_current_
     return await auth.get_user_repositories(current_user) # Delegate to auth module
 
 @app.post("/api/scan", status_code=202)
-async def start_scan(repo_data: schemas.RepoScanRequest, current_user: models.User = Depends(auth.get_current_active_user)):
+async def start_scan(repo_data: schemas.RepoScanRequest, current_user: models.User = Depends(auth.get_current_active_user), db: Session = Depends(database.get_db)):
     if not current_user.github_access_token:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="GitHub account not linked.")
     try:
         decrypted_token = security.decrypt_data(current_user.github_access_token)
         await auth.verify_repo_permission(repo_data.repo_name, decrypted_token) # Delegate verification
         # Pass necessary primitive types to Celery task
-        task = run_repository_scan.delay(repo_data.repo_name, decrypted_token, current_user.id) 
+        task = run_repository_scan.delay(repo_data.repo_name, decrypted_token, current_user.id)
+        db.add(models.ScanTask(task_id=task.id, user_id=current_user.id))
+        db.commit()
         return {"task_id": task.id}
     except HTTPException as e:
         raise e
@@ -70,11 +85,16 @@ async def start_scan(repo_data: schemas.RepoScanRequest, current_user: models.Us
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An unexpected error occurred while starting the scan. Please try again later.")
 
 @app.get("/api/scan/status/{task_id}")
-async def get_scan_status(task_id: str):
+async def get_scan_status(task_id: str, current_user: models.User = Depends(auth.get_current_active_user), db: Session = Depends(database.get_db)):
+    scan_task = db.query(models.ScanTask).filter(models.ScanTask.task_id == task_id).first()
+    if not scan_task or scan_task.user_id != current_user.id:
+        # 404 rather than 403 so guessing task_ids can't even confirm one exists.
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scan task not found.")
+
     task_result = AsyncResult(task_id, app=celery_app)
     if task_result.failed():
         # Log the actual error from the worker
-        print(f"ERROR IN SCAN TASK {task_id}: {task_result.result}") 
+        logger.error(f"ERROR IN SCAN TASK {task_id}: {task_result.result}")
         return {"status": "FAILURE", "detail": "Scan failed. Check server logs."} # Avoid sending detailed errors to client
     if task_result.ready():
         return {"status": "SUCCESS", "result": task_result.get()}

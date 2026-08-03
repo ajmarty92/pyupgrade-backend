@@ -15,11 +15,16 @@ load_dotenv()
 # --- Secret Keys ---
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 FERNET_KEY = os.getenv("FERNET_KEY")
+SESSION_SECRET_KEY = os.getenv("SESSION_SECRET_KEY")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 # 7 days
 
 # --- OAuth2 ---
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+# auto_error=False: the frontend authenticates via the httpOnly "access_token"
+# cookie set at login, not an Authorization header, so a missing header must
+# fall through to the cookie check in get_current_active_user rather than
+# rejecting the request outright.
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
 # --- Password Hashing ---
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -65,6 +70,9 @@ if not FERNET_KEY:
     raise ValueError("FERNET_KEY not found in environment variables.")
 fernet = Fernet(FERNET_KEY.encode())
 
+if not SESSION_SECRET_KEY:
+    raise ValueError("SESSION_SECRET_KEY not found in environment variables.")
+
 def encrypt_data(data: str) -> str:
     return fernet.encrypt(data.encode()).decode()
 
@@ -76,4 +84,9 @@ GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID")
 GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET")
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
+
+# --- Frontend ---
+# Base URL of the deployed app (no trailing slash) — where the browser is
+# sent back to after an OAuth round trip. Separate from any marketing site.
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000").rstrip("/")
 
