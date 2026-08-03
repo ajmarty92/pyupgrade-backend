@@ -1,6 +1,7 @@
 import pytest
 from cryptography.fernet import Fernet
 from datetime import datetime, timedelta, timezone
+from jose import jwt, JWTError
 import security
 
 def test_encrypt_decrypt_lifecycle():
@@ -54,6 +55,29 @@ def test_create_access_token_default_expiry():
     # Verify expiration is within a reasonable range (e.g., 10 seconds)
     # JWT exp is in seconds (int or float)
     assert abs(payload["exp"] - expected_exp.timestamp()) < 10
+
+def test_create_access_token_no_mutation():
+    """Test that creating an access token does not mutate the original data."""
+    data = {"sub": "immutable_user"}
+    original_data = data.copy()
+    security.create_access_token(data)
+    assert data == original_data
+
+def test_create_access_token_signature_verification():
+    """Test that the generated token is correctly signed with the JWT_SECRET_KEY."""
+    data = {"sub": "signature_test"}
+    token = security.create_access_token(data)
+
+    # Verify we can decode it with the correct key and algorithm
+    payload = jwt.decode(token, security.JWT_SECRET_KEY, algorithms=[security.ALGORITHM])
+    assert payload["sub"] == "signature_test"
+
+    # Verify that trying to decode with a wrong key fails
+    with pytest.raises(JWTError):
+        jwt.decode(token, "wrong_secret_key", algorithms=[security.ALGORITHM])
+
+    # Verify that trying to decode with a different algorithm (if applicable/tested) fails or we just trust jose
+    # We mainly care about the secret key here.
 
 def test_create_access_token_custom_expiry():
     """Test creating an access token with custom expiration."""
