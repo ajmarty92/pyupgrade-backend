@@ -28,4 +28,7 @@ jobs:
           JWT_SECRET_KEY: ci_dummy_jwt_secret
           SESSION_SECRET_KEY: ci_dummy_session_secret
           GEMINI_API_KEY: ci_dummy_gemini_key
-        run: pytest -q
+        # `-m pytest` (not bare `pytest`) so the repo root is on sys.path --
+        # the app modules (auth, security, scanner, ...) live there, not in
+        # a package, and there's no conftest.py at the root adding it.
+        run: python -m pytest -q
