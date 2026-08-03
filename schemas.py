@@ -10,7 +10,6 @@ class UserCreate(UserBase):
 class User(UserBase):
     id: int
     provider: str
-    github_access_token: Optional[str] = None
 
     class Config:
         from_attributes = True

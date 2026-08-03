@@ -1,0 +1,18 @@
+# Dependabot configuration for the Python project.
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    # requirements.txt lives in the repo root.
+    directory: "/"
+    schedule:
+      interval: "daily"
+    labels:
+      - "dependencies"
+      - "python"
+    groups:
+      python-patch-updates:
+        update-types:
+          - "patch"
+      python-minor-updates:
+        update-types:
+          - "minor"
