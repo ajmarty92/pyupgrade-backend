@@ -56,8 +56,13 @@ app.add_middleware(
 app.include_router(auth.router)
 
 # --- API Endpoints ---
+@app.get("/health")
+async def health():
+    """Liveness/readiness check for the hosting platform (Fly.io HTTP checks)."""
+    return {"status": "ok"}
+
 # Use the imported module 'schemas' to reference the User class
-@app.get("/api/me", response_model=schemas.User) 
+@app.get("/api/me", response_model=schemas.User)
 async def read_users_me(current_user: models.User = Depends(auth.get_current_active_user)):
     return current_user
 
