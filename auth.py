@@ -197,8 +197,8 @@ def signup(user_data: schemas.UserCreate, db: Session = Depends(database.get_db)
     return new_user
 
 @router.post("/login")
-def login(response: Response, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(database.get_db)):
-    user = security.authenticate_user(db, form_data.username, form_data.password)
+async def login(response: Response, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(database.get_db)):
+    user = await security.authenticate_user(db, form_data.username, form_data.password)
     if not user: raise HTTPException(status_code=401, detail="Incorrect email or password")
     _issue_session_cookie(response, user)
     return {"message": "Login successful"}
